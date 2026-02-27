@@ -1,0 +1,30 @@
+# Byte-compiled
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info
+*.egg-info/
+
+# Virtual environments
+venv/
+.venv/
+
+# Runtime directories
+uploads/
+outputs/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# FFmpeg bundled binaries
+ffmpeg/

@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HiRes Video Mixer</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>HiRes Video Mixer</h1>
+        <p class="subtitle">将音频转为高品质 FLAC 并替换视频音轨，输出 MKV</p>
+
+        <div id="ffmpeg-status" class="status-bar"></div>
+
+        <form id="upload-form">
+            <div class="form-group">
+                <label for="video">视频文件</label>
+                <div class="file-drop" id="video-drop">
+                    <input type="file" id="video" name="video" accept="video/*" required>
+                    <p>点击或拖放视频文件到此处</p>
+                    <span class="file-name" id="video-name"></span>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="audio">音频文件</label>
+                <div class="file-drop" id="audio-drop">
+                    <input type="file" id="audio" name="audio" accept="audio/*" required>
+                    <p>点击或拖放音频文件到此处</p>
+                    <span class="file-name" id="audio-name"></span>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="quality">FLAC 质量</label>
+                <select id="quality" name="quality">
+                    {% for key, preset in presets.items() %}
+                    <option value="{{ key }}" {% if key == '24bit-48khz' %}selected{% endif %}>
+                        {{ preset.label }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <button type="submit" id="submit-btn">开始处理</button>
+        </form>
+
+        <div id="progress" class="hidden">
+            <div class="progress-bar">
+                <div class="progress-fill" id="progress-fill"></div>
+            </div>
+            <p id="progress-text">处理中...</p>
+        </div>
+
+        <div id="result" class="hidden">
+            <div class="result-card">
+                <p>处理完成!</p>
+                <p id="result-info"></p>
+                <a id="download-link" class="btn-download" href="#" download>下载 MKV</a>
+            </div>
+        </div>
+
+        <div id="error" class="hidden">
+            <div class="error-card">
+                <p id="error-text"></p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 检查 FFmpeg
+        fetch('/check-ffmpeg')
+            .then(r => r.json())
+            .then(data => {
+                const el = document.getElementById('ffmpeg-status');
+                if (data.available) {
+                    el.textContent = 'FFmpeg: ' + data.version;
+                    el.className = 'status-bar status-ok';
+                } else {
+                    el.textContent = 'FFmpeg 未找到，请先安装 FFmpeg';
+                    el.className = 'status-bar status-error';
+                    document.getElementById('submit-btn').disabled = true;
+                }
+            });
+
+        // 文件拖放和选择
+        ['video', 'audio'].forEach(type => {
+            const drop = document.getElementById(type + '-drop');
+            const input = document.getElementById(type);
+            const nameEl = document.getElementById(type + '-name');
+
+            input.addEventListener('change', () => {
+                if (input.files.length > 0) {
+                    nameEl.textContent = input.files[0].name;
+                    drop.classList.add('has-file');
+                }
+            });
+
+            drop.addEventListener('dragover', e => {
+                e.preventDefault();
+                drop.classList.add('drag-over');
+            });
+            drop.addEventListener('dragleave', () => {
+                drop.classList.remove('drag-over');
+            });
+            drop.addEventListener('drop', e => {
+                e.preventDefault();
+                drop.classList.remove('drag-over');
+                if (e.dataTransfer.files.length > 0) {
+                    input.files = e.dataTransfer.files;
+                    nameEl.textContent = e.dataTransfer.files[0].name;
+                    drop.classList.add('has-file');
+                }
+            });
+        });
+
+        // 表单提交
+        document.getElementById('upload-form').addEventListener('submit', async function(e) {
+            e.preventDefault();
+
+            const formData = new FormData();
+            const audio = document.getElementById('audio').files[0];
+            const video = document.getElementById('video').files[0];
+            const quality = document.getElementById('quality').value;
+
+            if (!audio || !video) {
+                showError('请选择音频和视频文件');
+                return;
+            }
+
+            formData.append('audio', audio);
+            formData.append('video', video);
+            formData.append('quality', quality);
+
+            // UI 状态
+            document.getElementById('submit-btn').disabled = true;
+            document.getElementById('progress').classList.remove('hidden');
+            document.getElementById('result').classList.add('hidden');
+            document.getElementById('error').classList.add('hidden');
+
+            const fill = document.getElementById('progress-fill');
+            const text = document.getElementById('progress-text');
+            fill.style.width = '30%';
+            text.textContent = '上传文件中...';
+
+            try {
+                const xhr = new XMLHttpRequest();
+
+                xhr.upload.addEventListener('progress', e => {
+                    if (e.lengthComputable) {
+                        const pct = Math.round((e.loaded / e.total) * 50);
+                        fill.style.width = pct + '%';
+                        text.textContent = `上传中... ${pct * 2}%`;
+                    }
+                });
+
+                const response = await new Promise((resolve, reject) => {
+                    xhr.open('POST', '/process');
+                    xhr.onload = () => resolve(xhr);
+                    xhr.onerror = () => reject(new Error('网络错误'));
+
+                    fill.style.width = '50%';
+                    text.textContent = '处理中，请稍候...';
+                    xhr.send(formData);
+                });
+
+                fill.style.width = '100%';
+
+                const data = JSON.parse(response.responseText);
+                if (data.success) {
+                    text.textContent = '完成!';
+                    const sizeMB = (data.size / 1024 / 1024).toFixed(1);
+                    document.getElementById('result-info').textContent =
+                        `文件: ${data.filename} (${sizeMB} MB)`;
+                    document.getElementById('download-link').href =
+                        `/download/${data.task_id}/${encodeURIComponent(data.filename)}`;
+                    document.getElementById('result').classList.remove('hidden');
+                } else {
+                    showError(data.error || '处理失败');
+                }
+            } catch (err) {
+                showError(err.message);
+            } finally {
+                document.getElementById('submit-btn').disabled = false;
+            }
+        });
+
+        function showError(msg) {
+            document.getElementById('error-text').textContent = msg;
+            document.getElementById('error').classList.remove('hidden');
+            document.getElementById('progress').classList.add('hidden');
+        }
+    </script>
+</body>
+</html>

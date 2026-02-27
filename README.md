@@ -33,7 +33,7 @@ uv run python app.py
 
 ### 使用预构建包
 
-从 [Releases](https://github.com/ji233-Sun/hires-video-generator/releases) 下载对应平台的包：
+从 [Releases](https://github.com/ji233-Sun/hires-video-mixer/releases) 下载对应平台的包：
 
 - **macOS**: 解压后运行 `./HiResVideoMixer/HiResVideoMixer`
 - **Windows**: 解压后运行 `HiResVideoMixer\HiResVideoMixer.exe`（内置 FFmpeg）

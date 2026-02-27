@@ -28,3 +28,4 @@ Thumbs.db
 
 # FFmpeg bundled binaries
 ffmpeg/
+.ace-tool/
